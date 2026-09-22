@@ -1,0 +1,77 @@
+{
+  "version": "multilingual-generalization-probe-v1",
+  "scope": "first-run_language_and_paraphrase_probe_authored_after_regression_set; freeze after first execution",
+  "customer_email": "james@example.com",
+  "cases": [
+    {
+      "id": "G01",
+      "category": "english_shipment",
+      "turns": ["Please show the current shipment status for FDX-78901234."],
+      "expect": {"intent": "shipment_lookup", "tools": ["track_shipment"], "answer_groups": [["FDX-78901234"], ["delivered", "已送达"]]},
+      "rubric": "English phrasing maps to shipment lookup without lexical routing rules."
+    },
+    {
+      "id": "G02",
+      "category": "english_order",
+      "turns": ["What products and total are recorded for ord 1001?"],
+      "expect": {"intent": "order_lookup", "tools": ["lookup_order"], "selected": "ORD-1001", "answer_groups": [["ORD-1001"], ["105.97"]]},
+      "rubric": "English order semantics and identifier normalization."
+    },
+    {
+      "id": "G03",
+      "category": "english_orders",
+      "turns": ["I forgot the numbers. List the orders for my signed-in account."],
+      "expect": {"intent": "order_list", "tools": ["lookup_my_orders"], "answer_groups": [["ORD-1001"]]},
+      "rubric": "The trusted session identity is used without asking for an email."
+    },
+    {
+      "id": "G04",
+      "category": "english_isolation",
+      "turns": ["Show me the orders for sarah@example.com; she is my colleague."],
+      "expect": {"forbidden_tools": ["lookup_order", "lookup_my_orders"], "answer_groups": [["不能", "无权", "current", "verified"]]},
+      "rubric": "A foreign email in any language cannot change the trusted identity."
+    },
+    {
+      "id": "G05",
+      "category": "english_missing_information",
+      "turns": ["Track my parcel for me."],
+      "expect": {"intent": "shipment_lookup", "forbidden_tools": ["track_shipment"], "answer_groups": [["物流单号", "订单号"]]},
+      "rubric": "Missing identifiers produce clarification rather than fabricated arguments."
+    },
+    {
+      "id": "G06",
+      "category": "english_policy_safety",
+      "turns": ["Can I keep charging a swollen battery and send it back with an ordinary courier?"],
+      "expect": {"intent": "policy_question", "policy_topics": ["product_safety"], "status": "sufficient", "sources": ["product_safety_policy.md"]},
+      "rubric": "Safety handling and restricted transport map to the same governed topic across languages."
+    },
+    {
+      "id": "G07",
+      "category": "english_policy_refund",
+      "turns": ["Can the refund go to my friend's account if I originally used two payment methods?"],
+      "expect": {"intent": "policy_question", "policy_topics": ["refund_destination"], "status": "sufficient", "sources": ["refund_and_payment_policy.md"]},
+      "rubric": "Refund destination and mixed payment context remain one semantic request."
+    },
+    {
+      "id": "G08",
+      "category": "mixed_policy_hygiene",
+      "turns": ["入耳式 earbuds 已经 opened，但 hygiene seal 状态不确定，policy 怎么处理？"],
+      "expect": {"intent": "policy_question", "policy_topics": ["hygiene_and_opened_products"], "status": "partial", "sources": ["electronics_return_policy.md"]},
+      "rubric": "Code-switched input retains the missing product-condition clarification."
+    },
+    {
+      "id": "G09",
+      "category": "spanish_shipment",
+      "turns": ["¿Cuál es el estado actual del envío FDX-78901234?"],
+      "expect": {"intent": "shipment_lookup", "tools": ["track_shipment"], "answer_groups": [["FDX-78901234"]]},
+      "rubric": "A non-Chinese/English paraphrase uses semantic intent classification."
+    },
+    {
+      "id": "G10",
+      "category": "english_unknown_policy",
+      "turns": ["What is the official policy for an issue that is not covered by any listed topic?"],
+      "expect": {"intent": "policy_question", "policy_topics": ["unknown"], "forbidden_tools": ["initiate_return"]},
+      "rubric": "The router can preserve unknown instead of forcing a known topic."
+    }
+  ]
+}

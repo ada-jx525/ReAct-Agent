@@ -1,0 +1,33 @@
+name: Package and static checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install 'ruff>=0.16,<1' 'build>=1.2,<2' 'pytest>=8,<10'
+      - run: python -m pip install --no-deps -e .
+      - run: python -m ruff check src scripts
+      - run: python -m ruff format --check src scripts
+      - run: python -m compileall -q src scripts
+      - run: python -m pytest -q tests/unit_tests
+      - run: python -m build --wheel
+      - name: Check packaged submodules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheel = next(Path('dist').glob('*.whl'))
+          expected = {str(p.relative_to('src')) for p in Path('src/react_agent').rglob('*.py')}
+          with ZipFile(wheel) as artifact:
+              missing = expected - set(artifact.namelist())
+          assert not missing, sorted(missing)
+          PY
