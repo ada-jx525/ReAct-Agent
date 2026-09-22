@@ -409,7 +409,6 @@ RENDERERS = {
     "get_return_policy": render_policy,
     "track_shipment": render_shipment,
     "initiate_return": render_return,
-    "search_return_knowledge": render_passages,
 }
 BUSINESS_TOOLS = set(RENDERERS) | {"lookup_my_orders"}
 

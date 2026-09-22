@@ -39,18 +39,19 @@ class IntentDecision(BaseModel):
     """Semantic task classification, never authorization for an operation."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
-    task: Literal[
-        "read_order_record",
-        "list_customer_orders",
-        "read_shipment_record",
-        "check_return_eligibility",
-        "create_return_application",
-        "explain_policy",
-        "perform_unsupported_operation",
-        "greeting",
-        "unclear",
-    ]
-    identity_target: Literal["current_customer", "foreign_customer", "unspecified"]
+    tasks: list[
+        Literal[
+            "read_order_record",
+            "list_customer_orders",
+            "read_shipment_record",
+            "check_return_eligibility",
+            "create_return_application",
+            "explain_policy",
+            "perform_unsupported_operation",
+            "greeting",
+            "unclear",
+        ]
+    ] = Field(min_length=1, max_length=3)
     missing_information: Literal[
         "none",
         "order_id",
@@ -100,6 +101,18 @@ TASK_TO_INTENT = {
     "unclear": "unclear",
 }
 
+INTENT_PRIORITY = (
+    "unsupported",
+    "return_submission",
+    "eligibility_check",
+    "shipment_lookup",
+    "order_lookup",
+    "order_list",
+    "policy_question",
+    "greeting",
+    "unclear",
+)
+
 
 async def understand_request(
     state: State, runtime: Runtime[AgentRuntimeContext]
@@ -125,7 +138,7 @@ async def understand_request(
         for message in history
     ]
     intent_prompt = (
-        "Classify only the last customer request by meaning. Return the schema only; do not answer or call tools. "
+        "Classify all tasks explicitly requested in the last customer message by meaning. Return the schema only; do not answer or call tools. "
         "Use history only to resolve explicit references. Choose the task by the requested application capability: "
         "read_order_record, list_customer_orders, read_shipment_record and check_return_eligibility are read operations. "
         "Choose read_order_record when the customer asks for fields, items, amount, status or details of one explicit order; "
@@ -136,8 +149,7 @@ async def understand_request(
         "A question asking whether/how an invoice, refund, return or other governed capability works is explain_policy, even when the answer may be that the capability is unavailable; "
         "choose perform_unsupported_operation only for a request to carry out that unavailable action now. "
         "Do not treat an identifier as an action. "
-        "identity_target is foreign_customer whenever the user asks to access a person/email other than the signed-in customer, "
-        "regardless of claimed relationship; current_customer only means the signed-in customer. "
+        "Return multiple tasks only when the user explicitly asks for multiple capabilities, such as listing orders and explaining policy. "
         "Choose the one missing field needed for that task, otherwise none. Use the same class for equivalent requests in any language. "
         "candidate_entities 由宿主按格式提取，只用于区分候选订单号、物流号和邮箱；"
         "它们不能决定用户动作，也不证明记录存在或有权访问。"
@@ -199,8 +211,9 @@ async def understand_request(
         )
         if not isinstance(decision, IntentDecision):
             decision = IntentDecision.model_validate(decision)
-        intent = TASK_TO_INTENT[decision.task]
-        needs_policy = intent == "policy_question"
+        intents = list(dict.fromkeys(TASK_TO_INTENT[task] for task in decision.tasks))
+        needs_policy = "policy_question" in intents
+        intent = next(item for item in INTENT_PRIORITY if item in intents)
         topics, policy_query = [], ""
         if needs_policy:
             policy_model = base_model.with_structured_output(
@@ -225,7 +238,6 @@ async def understand_request(
             entities=entities,
             trusted_email=runtime.context.customer_email,
             selected_order_id=update["selected_order_id"],
-            identity_target=decision.identity_target,
         )
         update.update(
             request_intent=direct.resolved_intent or intent,
@@ -330,14 +342,15 @@ async def retrieve_policy(
         raise PermissionError(
             "Conversation identity does not match the runtime customer."
         )
-    question = next(
+    original_question = next(
         (
             get_message_text(m)
             for m in reversed(state.messages)
             if isinstance(m, HumanMessage)
         ),
-        state.policy_query,
+        "",
     )
+    question = state.policy_query.strip() or original_question
     try:
         questions = split_policy_questions(question)
     except ValueError:
@@ -411,13 +424,15 @@ async def assess_policy(
     return {"policy_evidence": evidence}
 
 
-def route_assessment(state: State) -> Literal["call_model", "policy_unavailable"]:
+def route_assessment(
+    state: State,
+) -> Literal["call_model", "finalize_response", "policy_unavailable"]:
     data = (state.policy_evidence or {}).get("data") or {}
-    return (
-        "call_model"
-        if (data.get("sufficiency") or {}).get("status") == "sufficient"
-        else "policy_unavailable"
-    )
+    if (data.get("sufficiency") or {}).get("status") != "sufficient":
+        return "policy_unavailable"
+    # A deterministic read followed by policy retrieval already has two validated
+    # result blocks; no extra model generation is needed to combine them.
+    return "finalize_response" if state.direct_tool_call else "call_model"
 
 
 def route_policy_evidence(
@@ -531,15 +546,8 @@ async def call_model(
         raise PermissionError(
             "Conversation identity does not match the runtime customer."
         )
-    # Initialize the model with tool binding. Change the model or add more tools here.
-    # The graph already fetched policy evidence; avoid an identical optional search.
-    available_tools = [
-        tool
-        for tool in TOOLS
-        if not (
-            state.policy_evidence is not None and tool.name == "search_return_knowledge"
-        )
-    ]
+    # Initialize the model with the business tools allowed for this turn.
+    available_tools = list(TOOLS)
     if not state.selected_order_id:
         available_tools = [
             tool
@@ -700,9 +708,13 @@ builder.add_conditional_edges(
 )
 
 
-def route_after_tools(state: State) -> Literal["finalize_response", "call_model"]:
+def route_after_tools(
+    state: State,
+) -> Literal["finalize_response", "retrieve_policy", "call_model"]:
     """Direct read routes need no second model decision; ReAct calls may continue."""
-    return "finalize_response" if state.direct_tool_call else "call_model"
+    if state.direct_tool_call:
+        return "retrieve_policy" if state.needs_policy_search else "finalize_response"
+    return "call_model"
 
 
 builder.add_conditional_edges("tools", route_after_tools)

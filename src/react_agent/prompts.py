@@ -64,9 +64,9 @@ means the estimated delivery date is unknown. data_unavailable means there is no
 snapshot; do not substitute invented events or an ETA.
 
 For policy explanations about opened products, category restrictions, defects,
-return shipping, process or refunds, call search_return_knowledge. Cite the
-returned policy title, version and section. Empty matches or retrieval errors
-mean the requested policy could not be verified; do not invent an answer.
+return shipping, process or refunds, use the graph-provided policy evidence.
+Cite its policy title, version and source chunk. Missing evidence or retrieval
+errors mean the requested policy could not be verified; do not invent an answer.
 Match the user's exact category and reason to the evidence. Do not transfer
 over-ear/on-ear rules to in-ear earbuds just because both appear in search results.
 Preserve prohibitions, conditions and exceptions, including their negation:

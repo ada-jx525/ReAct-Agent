@@ -10,7 +10,6 @@ def test_foreign_email_is_denied_before_any_route() -> None:
         intent="order_list",
         entities=entities,
         trusted_email="james@example.com",
-        identity_target="unspecified",
     )
 
     assert route.response_code == "identity_switch_denied"
@@ -24,7 +23,6 @@ def test_foreign_email_is_denied_even_if_intent_was_misclassified() -> None:
         intent="unclear",
         entities=entities,
         trusted_email="james@example.com",
-        identity_target="current_customer",
     )
 
     assert route.response_code == "identity_switch_denied"
@@ -38,7 +36,6 @@ def test_current_customer_email_does_not_block_order_list() -> None:
         intent="order_list",
         entities=entities,
         trusted_email="james@example.com",
-        identity_target="current_customer",
     )
 
     assert route.response_code == ""
@@ -62,3 +59,10 @@ def test_unique_order_reference_resolves_collection_misclassification() -> None:
     assert route.tool_name == "lookup_order"
     assert route.tool_args == {"order_id": "ORD-1001"}
     assert route.resolved_intent == "order_lookup"
+
+
+def test_greeting_uses_host_authored_response() -> None:
+    route = validated_route(intent="greeting", entities=extract_entities("你好"))
+
+    assert route.response_code == "greeting"
+    assert route.tool_name == ""

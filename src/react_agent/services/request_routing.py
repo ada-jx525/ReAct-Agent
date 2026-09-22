@@ -54,7 +54,6 @@ def validated_route(
     entities: RequestEntities,
     trusted_email: str = "",
     selected_order_id: str = "",
-    identity_target: str = "unspecified",
 ) -> DeterministicRoute:
     """Validate a semantic decision against language-independent invariants."""
     trusted = trusted_email.strip().lower()
@@ -63,8 +62,8 @@ def validated_route(
     )
     # An email written in chat is untrusted input, never a new identity scope.
     # None of this agent's capabilities accepts an arbitrary customer email, so
-    # fail closed before routing.  `identity_target` remains useful semantic
-    # telemetry but is deliberately not an authorization dependency.
+    # fail closed before routing. Model-produced identity labels are deliberately
+    # not part of authorization; only application identity and explicit input are.
     if explicit_foreign_email:
         return DeterministicRoute(response_code="identity_switch_denied")
 
@@ -125,6 +124,8 @@ def validated_route(
             )
     if intent == "unsupported":
         return DeterministicRoute(response_code="unsupported_operation")
+    if intent == "greeting":
+        return DeterministicRoute(response_code="greeting")
     return DeterministicRoute()
 
 
@@ -154,6 +155,10 @@ def response_for(code: str) -> str:
         "unsupported_operation": (
             "当前系统无法执行这项操作，也不会编造地址、面单、预约、退款或处理结果。"
             "我可以解释已有政策，或查询当前客户可访问的订单和物流记录。"
+        ),
+        "greeting": (
+            "你好，我可以查询当前客户的订单和物流、解释退货政策、检查退货资格，"
+            "也可以在你确认后提交整单退货申请。"
         ),
     }
     if code not in responses:
